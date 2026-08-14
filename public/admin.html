@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Reasoning Hub</title>
+<link rel="stylesheet" href="/css/theme.css">
+</head>
+<body class="hub-body">
+<div id="siteNav"></div>
+
+<div class="hub-wrap">
+  <div class="hub-eyebrow">Admin only</div>
+  <h1 class="hub-h1">Users &amp; Access</h1>
+  <p class="hub-sub">Everyone who has registered, with a rough count of saved records per tracker. Promote or demote admin access below.</p>
+
+  <div class="hub-card" style="margin-top:22px; overflow-x:auto;">
+    <table class="admin-table" id="usersTable">
+      <thead>
+        <tr>
+          <th>Email</th><th>Name</th><th>Role</th><th>Joined</th>
+          <th>Matrix days</th><th>Reasoning days</th><th>Prep30 days</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="usersBody"><tr><td colspan="8" class="mono" style="color:var(--muted);padding:20px;">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="/js/nav.js"></script>
+<script>
+function getToken(){ return localStorage.getItem('rh_token'); }
+
+async function loadUsers(){
+  const res = await fetch('/api/admin/users', { headers: { Authorization: 'Bearer ' + getToken() } });
+  const body = document.getElementById('usersBody');
+  if(res.status === 403){
+    body.innerHTML = '<tr><td colspan="8" style="padding:20px;color:var(--red);">Admin access required.</td></tr>';
+    return;
+  }
+  const data = await res.json();
+  if(!data.users || !data.users.length){
+    body.innerHTML = '<tr><td colspan="8" class="mono" style="color:var(--muted);padding:20px;">No users yet.</td></tr>';
+    return;
+  }
+  body.innerHTML = data.users.map(u => `
+    <tr data-id="${u.id}">
+      <td>${u.email}</td>
+      <td>${u.name || '—'}</td>
+      <td><span class="role-pill ${u.role}">${u.role}</span></td>
+      <td class="mono">${(u.created_at||'').slice(0,10)}</td>
+      <td class="mono">${u.activity.matrix || 0}</td>
+      <td class="mono">${u.activity.reasoning || 0}</td>
+      <td class="mono">${u.activity.prep30 || 0}</td>
+      <td><button data-action="toggle" data-role="${u.role}">${u.role === 'admin' ? 'Make user' : 'Make admin'}</button></td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('usersBody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action="toggle"]');
+  if(!btn) return;
+  const row = btn.closest('tr');
+  const id = row.getAttribute('data-id');
+  const nextRole = btn.getAttribute('data-role') === 'admin' ? 'user' : 'admin';
+  btn.disabled = true;
+  const res = await fetch('/api/admin/users/' + id + '/role', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
+    body: JSON.stringify({ role: nextRole })
+  });
+  const data = await res.json();
+  if(!res.ok){ alert(data.error || 'Could not update role'); btn.disabled = false; return; }
+  loadUsers();
+});
+
+(async function init(){
+  const user = await window.HubNav.init('admin', true);
+  if(!user) return;
+  if(user.role !== 'admin'){
+    document.querySelector('.hub-wrap').innerHTML = '<p class="mono" style="padding:40px 0;color:var(--red);">Admin access required.</p>';
+    return;
+  }
+  loadUsers();
+})();
+</script>
+</body>
+</html>
